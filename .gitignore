@@ -1,0 +1,15 @@
+# Common ignores
+node_modules/
+dist/
+.tsbuild/
+*.tsbuildinfo
+.moon/cache/
+.next/
+.env*.local
+.DS_Store
+.direnv
+
+# WXT / extension build artifacts
+.wxt/
+.output/
+web-ext-artifacts/

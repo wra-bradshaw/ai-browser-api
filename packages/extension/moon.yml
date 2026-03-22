@@ -1,0 +1,28 @@
+language: "typescript"
+layer: "application"
+
+dependsOn:
+  - "bridge-codecs"
+  - "contracts"
+  - "effect-utils"
+  - "reactive-core"
+  - "runtime-core"
+
+toolchains:
+  default: "system"
+
+tasks:
+  build:
+    outputs:
+      - ".output/**/*"
+
+  zip:
+    command: "bun run zip"
+    deps:
+      - "build"
+    inputs:
+      - "package.json"
+      - "src/**/*"
+      - "wxt.config.ts"
+    outputs:
+      - "web-ext-artifacts/**/*"

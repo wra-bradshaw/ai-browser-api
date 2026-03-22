@@ -1,0 +1,9 @@
+language: "typescript"
+layer: "library"
+
+dependsOn:
+  - "contracts"
+  - "effect-utils"
+
+toolchains:
+  default: "system"

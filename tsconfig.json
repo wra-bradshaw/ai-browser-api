@@ -1,0 +1,33 @@
+{
+  "extends": "./tsconfig.options.json",
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/bridge-codecs"
+    },
+    {
+      "path": "./packages/client"
+    },
+    {
+      "path": "./packages/client-react"
+    },
+    {
+      "path": "./packages/contracts"
+    },
+    {
+      "path": "./packages/effect-utils"
+    },
+    {
+      "path": "./packages/example-app"
+    },
+    {
+      "path": "./packages/extension"
+    },
+    {
+      "path": "./packages/reactive-core"
+    },
+    {
+      "path": "./packages/runtime-core"
+    }
+  ]
+}

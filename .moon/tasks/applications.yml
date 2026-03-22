@@ -1,0 +1,26 @@
+inheritedBy:
+  layers: "application"
+
+tasks:
+  build:
+    command: "bun run build"
+    inputs:
+      - "package.json"
+      - "tsconfig.json"
+      - "tsconfig.*.json"
+      - "src/**/*"
+      - "scripts/**/*"
+      - "*.config.*"
+      - "/tsconfig.json"
+      - "/tsconfig.options.json"
+
+  dev:
+    command: "bun run dev"
+    inputs:
+      - "package.json"
+      - "tsconfig.json"
+      - "tsconfig.*.json"
+      - "src/**/*"
+      - "scripts/**/*"
+      - "*.config.*"
+    preset: "server"

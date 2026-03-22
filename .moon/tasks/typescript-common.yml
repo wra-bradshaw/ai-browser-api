@@ -1,0 +1,30 @@
+inheritedBy:
+  languages: "typescript"
+
+tasks:
+  lint:
+    command: "bun run lint"
+    inputs:
+      - "package.json"
+      - "tsconfig.json"
+      - "tsconfig.*.json"
+      - "src/**/*"
+      - "scripts/**/*"
+      - "*.config.*"
+      - "/eslint.config.mjs"
+      - "/tsconfig.json"
+      - "/tsconfig.options.json"
+
+  typecheck:
+    command: "bun run typecheck"
+    deps:
+      - "^:typecheck"
+    inputs:
+      - "package.json"
+      - "tsconfig.json"
+      - "tsconfig.*.json"
+      - "src/**/*"
+      - "scripts/**/*"
+      - "*.config.*"
+      - "/tsconfig.json"
+      - "/tsconfig.options.json"

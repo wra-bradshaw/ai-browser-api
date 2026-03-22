@@ -1,0 +1,10 @@
+language: "typescript"
+layer: "library"
+
+dependsOn:
+  - "bridge-codecs"
+  - "contracts"
+  - "runtime-core"
+
+toolchains:
+  default: "system"

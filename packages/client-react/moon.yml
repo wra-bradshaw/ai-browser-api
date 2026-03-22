@@ -1,0 +1,9 @@
+language: "typescript"
+layer: "library"
+
+dependsOn:
+  - "client"
+  - "reactive-core"
+
+toolchains:
+  default: "system"

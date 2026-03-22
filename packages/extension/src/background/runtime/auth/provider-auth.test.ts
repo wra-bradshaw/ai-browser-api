@@ -1,0 +1,266 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  RuntimeAuthProviderError,
+  type RuntimeRpcError,
+  RuntimeValidationError,
+  type RuntimeAuthFlowInstruction,
+} from "@llm-bridge/contracts";
+import * as Effect from "effect/Effect";
+import type {
+  AIAdapter,
+  AnyAuthMethodDefinition,
+} from "@/background/runtime/providers/adapters/types";
+import type { AuthRecord, AuthResult } from "@/background/runtime/auth/auth-store";
+
+const provider = {
+  id: "openai",
+  name: "OpenAI",
+  source: "models.dev" as const,
+  env: ["OPENAI_API_KEY"],
+  connected: true,
+  options: {},
+};
+
+let storedAuth: AuthRecord | undefined;
+let persistedAuth: Array<{ providerID: string; result: AuthResult }> = [];
+let instructions: Array<RuntimeAuthFlowInstruction> = [];
+
+let authorizeImpl: (
+  input: Parameters<AnyAuthMethodDefinition["authorize"]>[0],
+) => Effect.Effect<AuthResult, RuntimeRpcError> = () =>
+  Effect.succeed({
+    type: "api",
+    key: "api-key-1",
+    methodID: "apikey",
+    methodType: "apikey",
+  });
+
+const adapter: AIAdapter = {
+  key: "test-adapter",
+  displayName: "Test Adapter",
+  match: {
+    providerIDs: ["openai"],
+  },
+  listAuthMethods: () =>
+    Effect.succeed([
+      {
+        id: "oauth",
+        type: "oauth",
+        label: "OAuth",
+        authorize: (input) => authorizeImpl(input),
+      },
+    ]),
+  createModel: () => Effect.die("unused"),
+};
+
+type ProviderAuthModule = typeof import("./provider-auth");
+
+let providerAuthModule: ProviderAuthModule;
+
+function installProviderAuthMocks() {
+  vi.doMock("@/background/security/runtime-security", () => ({
+    provideRuntimeSecurity: <A, E, R>(effect: Effect.Effect<A, E, R>) => effect,
+  }));
+
+  vi.doMock("@/background/runtime/catalog/models-dev", () => ({
+    getModelsDevData: () =>
+      Effect.succeed({
+        openai: {
+          name: "OpenAI",
+          models: {},
+        },
+      }),
+  }));
+
+  vi.doMock("@/background/runtime/providers/adapters", () => ({
+    resolveAdapterForProvider: () => adapter,
+    resolveAdapterForModel: () => adapter,
+    parseAdapterStoredAuth: (auth: AuthResult) => auth,
+  }));
+
+  vi.doMock("@/background/runtime/catalog/provider-registry", () => ({
+    getProvider: () => Effect.succeed(provider),
+    getModel: () => Effect.die("unused"),
+    listModelRows: () => Effect.succeed([]),
+    listProviderRows: () => Effect.succeed([]),
+    ensureProviderCatalog: () => Effect.void,
+    refreshProviderCatalog: () => Effect.succeed(Date.now()),
+    refreshProviderCatalogForProvider: () => Effect.void,
+  }));
+
+  vi.doMock("@/background/runtime/auth/auth-store", () => ({
+    getAuth: () => Effect.succeed(storedAuth),
+    setAuth: (providerID: string, result: AuthResult) =>
+      Effect.sync(() => {
+        persistedAuth.push({ providerID, result });
+        storedAuth = {
+          ...result,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        } as AuthRecord;
+      }),
+    removeAuth: () => Effect.void,
+    runSecurityEffect: <A, E>(effect: Effect.Effect<A, E>) =>
+      Effect.runPromise(effect),
+  }));
+}
+
+async function loadProviderAuthModule() {
+  installProviderAuthMocks();
+  return import("./provider-auth");
+}
+
+beforeEach(async () => {
+  vi.resetModules();
+  storedAuth = undefined;
+  persistedAuth = [];
+  instructions = [];
+  authorizeImpl = () =>
+    Effect.succeed({
+      type: "api",
+      key: "api-key-1",
+      methodID: "apikey",
+      methodType: "apikey",
+    });
+  providerAuthModule = await loadProviderAuthModule();
+});
+
+afterEach(() => {
+  vi.doUnmock("@/background/security/runtime-security");
+  vi.doUnmock("@/background/runtime/catalog/models-dev");
+  vi.doUnmock("@/background/runtime/providers/adapters");
+  vi.doUnmock("@/background/runtime/catalog/provider-registry");
+  vi.doUnmock("@/background/runtime/auth/auth-store");
+  vi.restoreAllMocks();
+  vi.resetModules();
+});
+
+describe("provider-auth", () => {
+  it("lists runtime auth methods from an Effect-based adapter", async () => {
+    const methods = await Effect.runPromise(
+      providerAuthModule.listProviderAuthMethods("openai"),
+    );
+
+    expect(methods).toEqual([
+      {
+        id: "oauth",
+        type: "oauth",
+        label: "OAuth",
+        fields: [],
+      },
+    ]);
+  });
+
+  it("persists auth after successful authorization", async () => {
+    const result = await Effect.runPromise(
+      providerAuthModule.startProviderAuth({
+        providerID: "openai",
+        methodID: "oauth",
+      }),
+    );
+
+    expect(result).toEqual({
+      methodID: "oauth",
+      connected: true,
+    });
+    expect(persistedAuth).toHaveLength(1);
+    expect(persistedAuth[0]).toMatchObject({
+      providerID: "openai",
+      result: {
+        type: "api",
+        key: "api-key-1",
+        methodID: "apikey",
+        methodType: "apikey",
+      },
+    });
+  });
+
+  it("forwards auth instructions through the Effect callback", async () => {
+    authorizeImpl = (input) =>
+      input.authFlow.publish({
+        kind: "notice",
+        title: "Continue in browser",
+        message: "Finish signing in.",
+        url: "https://example.test/auth",
+        autoOpened: true,
+      }).pipe(
+        Effect.zipRight(
+          Effect.succeed({
+            type: "api",
+            key: "api-key-2",
+            methodID: "apikey",
+            methodType: "apikey",
+          }),
+        ),
+      );
+
+    await Effect.runPromise(
+      providerAuthModule.startProviderAuth({
+        providerID: "openai",
+        methodID: "oauth",
+        onInstruction: (instruction) =>
+          Effect.sync(() => {
+            instructions.push(instruction);
+          }),
+      }),
+    );
+
+    expect(instructions).toEqual([
+      {
+        kind: "notice",
+        title: "Continue in browser",
+        message: "Finish signing in.",
+        url: "https://example.test/auth",
+        autoOpened: true,
+      },
+    ]);
+  });
+
+  it("preserves typed adapter failures", async () => {
+    authorizeImpl = () =>
+      Effect.fail(
+        new RuntimeValidationError({
+          message: "Invalid provider input",
+        }),
+      );
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        providerAuthModule.startProviderAuth({
+          providerID: "openai",
+          methodID: "oauth",
+        }),
+      ),
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Left",
+      left: {
+        _tag: "RuntimeValidationError",
+        message: "Invalid provider input",
+      },
+    });
+  });
+
+  it("wraps adapter defects as runtime auth plugin failures", async () => {
+    authorizeImpl = () => Effect.die(new Error("plugin exploded"));
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        providerAuthModule.startProviderAuth({
+          providerID: "openai",
+          methodID: "oauth",
+        }),
+      ),
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Left",
+      left: {
+        _tag: "RuntimeAuthProviderError",
+        operation: "auth.authorize",
+        message: "plugin exploded",
+      } satisfies Partial<RuntimeAuthProviderError>,
+    });
+  });
+});

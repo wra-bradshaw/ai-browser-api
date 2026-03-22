@@ -1,0 +1,13 @@
+language: "typescript"
+layer: "application"
+
+dependsOn:
+  - "client-react"
+
+toolchains:
+  default: "system"
+
+tasks:
+  build:
+    outputs:
+      - "dist/**/*"
